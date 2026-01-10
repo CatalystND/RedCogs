@@ -1,0 +1,23 @@
+{
+    "author": [
+        "Nick Daino"
+    ],
+    "description": "Fetches upcoming NFL game schedules from PlainTextSports and displays them in Discord embeds.",
+    "install_msg": "Thanks for installing NFLGames! Use `[p]nfl` to see upcoming NFL games. Make sure you have aiohttp and beautifulsoup4 installed: `pip install aiohttp beautifulsoup4`",
+    "short": "Shows upcoming NFL games from PlainTextSports",
+    "tags": [
+        "nfl",
+        "sports",
+        "football",
+        "games",
+        "schedule"
+    ],
+    "requirements": [
+        "aiohttp",
+        "beautifulsoup4"
+    ],
+    "min_bot_version": "3.4.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
