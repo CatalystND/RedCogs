@@ -121,16 +121,34 @@ class NFLGames(commands.Cog):
             
             for element in soup.find_all(['a', 'h1', 'h2', 'h3', 'p', 'div']):
                 text = element.get_text(strip=True)
-                
+
                 # Check if we've entered NFL section
                 if 'National Football League' in text:
                     processing_nfl = True
                     continue
-                
-                # Check if we've left NFL section (entered another sport)
-                if processing_nfl and ('National Basketball' in text or 'National Hockey' in text):
-                    break
-                
+
+                # Check if we've left NFL section (entered another sport/league)
+                if processing_nfl:
+                    # Look for other major sports leagues
+                    other_leagues = [
+                        'National Basketball',   # NBA
+                        'National Hockey',       # NHL
+                        'Major League Baseball', # MLB
+                        'Major League Soccer',   # MLS
+                        'National Association',  # College sports
+                    ]
+
+                    # Check if we hit another league
+                    if any(league in text for league in other_leagues):
+                        print(f"Found end of NFL section: {text}")
+                        break
+
+                    # Safety limit: stop if we've found an unreasonable number of games
+                    total_parsed = sum(len(games) for games in games_by_day.values())
+                    if total_parsed >= 20:
+                        print(f"Safety limit reached: {total_parsed} games parsed")
+                        break
+
                 if not processing_nfl:
                     continue
                 
