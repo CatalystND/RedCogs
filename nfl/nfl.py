@@ -278,10 +278,11 @@ class NFLGames(commands.Cog):
             for embed in embeds:
                 await ctx.send(embed=embed)
 
+    @commands.bot_has_permissions(embed_links=True)
     @commands.group(invoke_without_command=True)
     async def nfl(self, ctx):
         """Show NFL games
-        
+
         Usage:
         [p]nfl - Show all upcoming games
         [p]nfl today - Show only today's games
@@ -292,46 +293,55 @@ class NFLGames(commands.Cog):
         if ctx.invoked_subcommand is None:
             await self.show_nfl_games(ctx)
     
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="today")
     async def nfl_today(self, ctx):
         """Show only today's NFL games"""
         await self.show_nfl_day(ctx, "Today")
     
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="tomorrow")
     async def nfl_tomorrow(self, ctx):
         """Show only tomorrow's NFL games"""
         await self.show_nfl_day(ctx, "Tomorrow")
     
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="monday")
     async def nfl_monday(self, ctx):
         """Show Monday's NFL games"""
         await self.show_nfl_day(ctx, "Monday")
-    
+
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="tuesday")
     async def nfl_tuesday(self, ctx):
         """Show Tuesday's NFL games"""
         await self.show_nfl_day(ctx, "Tuesday")
-    
+
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="wednesday")
     async def nfl_wednesday(self, ctx):
         """Show Wednesday's NFL games"""
         await self.show_nfl_day(ctx, "Wednesday")
-    
+
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="thursday")
     async def nfl_thursday(self, ctx):
         """Show Thursday's NFL games"""
         await self.show_nfl_day(ctx, "Thursday")
-    
+
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="friday")
     async def nfl_friday(self, ctx):
         """Show Friday's NFL games"""
         await self.show_nfl_day(ctx, "Friday")
-    
+
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="saturday")
     async def nfl_saturday(self, ctx):
         """Show Saturday's NFL games"""
         await self.show_nfl_day(ctx, "Saturday")
-    
+
+    @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="sunday")
     async def nfl_sunday(self, ctx):
         """Show Sunday's NFL games"""

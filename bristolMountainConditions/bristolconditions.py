@@ -86,6 +86,7 @@ class BristolConditions(commands.Cog):
 
         return lifts, trails
 
+    @commands.bot_has_permissions(embed_links=True)
     @commands.command()
     async def bristol(self, ctx):
         """Show Bristol Mountain lift and trail conditions"""
