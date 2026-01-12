@@ -2,7 +2,7 @@
     "author": [
         "Nick Daino"
     ],
-    "install_msg": "Thanks for adding this repo! Use `[p]cog list cogs` to see available cogs. Current cogs: NFLGames (NFL schedules) and BristolConditions (ski conditions).",
+    "install_msg": "Thanks for adding this repo! Current cogs: NFLGames (NFL schedules) and BristolConditions (ski conditions).",
     "name": "cogs",
     "short": "Personal collection of Red-Discord Bot cogs",
     "description": "A collection of personal Red-Discord Bot cogs including NFL game schedules and Bristol Mountain ski conditions. Some cogs are location-specific, others are more general purpose."
