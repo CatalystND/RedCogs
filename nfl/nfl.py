@@ -225,14 +225,16 @@ class NFLGames(commands.Cog):
 
         return chunks
 
-    async def fetch_nfl_games(self) -> Dict:
-        """Fetch and parse NFL games from plaintextsports.com"""
+    async def fetch_nfl_games(self):
+        """Fetch and parse NFL games. Returns dict on success, error string on failure."""
+        import logging
+        log = logging.getLogger("red.nfl")
         url = "https://plaintextsports.com/nfl/"
 
         try:
             async with self.session.get(url, timeout=10) as response:
                 if response.status != 200:
-                    return None
+                    return "Website unavailable (HTTP error). Try again shortly."
                 html = await response.text()
 
             soup = BeautifulSoup(html, 'html.parser')
@@ -246,12 +248,12 @@ class NFLGames(commands.Cog):
                     break
 
             if not nfl_found:
-                return None
+                return "NFL section not found - website may have changed."
 
             round_info = "NFL Games"
             if current_section:
                 next_text = current_section.find_next(string=True)
-                if next_text and ('Wild Card' in next_text or 'Week' in next_text):
+                if next_text and ('Wild Card' in next_text or 'Week' in next_text or 'Divisional' in next_text or 'Conference' in next_text or 'Super Bowl' in next_text):
                     round_info = next_text.strip()
 
             games_by_day = {}
@@ -289,12 +291,13 @@ class NFLGames(commands.Cog):
                         games_by_day[current_day].append(game_data)
 
             if not games_by_day:
-                return None
+                return "No NFL games found. The season may be over or no games scheduled."
 
             return {'round': round_info, 'games': games_by_day}
 
-        except Exception:
-            return None
+        except Exception as e:
+            log.warning(f"NFL parse error: {type(e).__name__}: {e}")
+            return "Error processing game data. Try again later."
 
     def _build_day_embed(self, day: str, games: List[Dict], round_info: str) -> discord.Embed:
         """Build embed for a day's games"""
@@ -328,8 +331,11 @@ class NFLGames(commands.Cog):
         async with ctx.typing():
             data = await self.fetch_nfl_games()
 
+            if isinstance(data, str):
+                await ctx.send(data)
+                return
             if not data or not data.get('games'):
-                await ctx.send("Could not fetch NFL game information. Please try again later.")
+                await ctx.send("Could not fetch NFL game information.")
                 return
 
             days_order = ['Today', 'Tomorrow', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -417,6 +423,9 @@ class NFLGames(commands.Cog):
         async with ctx.typing():
             data = await self.fetch_nfl_games()
 
+            if isinstance(data, str):
+                await ctx.send(data)
+                return
             if not data or not data.get('games'):
                 await ctx.send("Could not fetch NFL game information.")
                 return
