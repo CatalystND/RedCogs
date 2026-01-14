@@ -89,6 +89,10 @@ class NHLGames(commands.Cog):
             chunks.append('\n'.join(current_chunk))
         return chunks
 
+    def get_season_string(self, year: int) -> str:
+        """Get season string for URL (NHL uses 2025-2026 format)"""
+        return f"{year}-{year + 1}"
+
     async def fetch_team_list(self, year: int) -> Optional[List[Dict]]:
         """Fetch teams for a year (cached 90 days)"""
         team_cache = await self.config.team_cache()
@@ -99,7 +103,8 @@ class NHLGames(commands.Cog):
             if (datetime.now().timestamp() - cached_at) < (90 * 24 * 60 * 60):
                 return team_cache[cache_key]['teams']
 
-        url = f"{self.BASE_URL}/{self.SPORT_SLUG}/{year}/teams/"
+        season = self.get_season_string(year)
+        url = f"{self.BASE_URL}/{self.SPORT_SLUG}/{season}/teams/"
         try:
             async with self.session.get(url, timeout=10) as response:
                 if response.status != 200:
@@ -110,7 +115,7 @@ class NHLGames(commands.Cog):
 
         soup = BeautifulSoup(html, 'html.parser')
         teams = []
-        pattern = rf'/{self.SPORT_SLUG}/\d+/teams/'
+        pattern = rf'/{self.SPORT_SLUG}/\d+-\d+/teams/'
         for link in soup.find_all('a', href=re.compile(pattern)):
             teams.append({
                 'name': link.get_text(strip=True),
@@ -141,7 +146,8 @@ class NHLGames(commands.Cog):
 
     async def fetch_team_schedule(self, year: int, team_slug: str) -> Optional[str]:
         """Fetch raw ASCII schedule text for a team"""
-        url = f"{self.BASE_URL}/{self.SPORT_SLUG}/{year}/teams/{team_slug}"
+        season = self.get_season_string(year)
+        url = f"{self.BASE_URL}/{self.SPORT_SLUG}/{season}/teams/{team_slug}"
         try:
             async with self.session.get(url, timeout=10) as response:
                 if response.status != 200:
