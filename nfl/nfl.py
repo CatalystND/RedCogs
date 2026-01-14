@@ -205,12 +205,50 @@ class NFLGames(commands.Cog):
 
             soup = BeautifulSoup(html, 'html.parser')
 
-            # Find the <pre> tag containing schedule data
-            pre_tag = soup.find('pre')
-            if not pre_tag:
+            # Find the team name (in a div with class "font-bold text-center")
+            team_name_div = soup.find('div', class_='font-bold text-center')
+            if not team_name_div:
                 return None
 
-            return pre_tag.get_text()
+            team_name = team_name_div.get_text(strip=True)
+
+            # Find the record (next div with class "text-center")
+            record_div = team_name_div.find_next('div', class_='text-center')
+            record = record_div.get_text(strip=True) if record_div else ''
+
+            # Convert HTML to text, preserving line structure
+            body = soup.find('body')
+            if not body:
+                return None
+
+            # Replace block-level closing tags with newlines
+            body_html = str(body)
+            body_html = re.sub(r'</div>', '\n', body_html)
+            body_html = re.sub(r'</b>', '\n', body_html)
+
+            # Remove all HTML tags
+            text = re.sub(r'<[^>]+>', ' ', body_html)
+
+            # Clean up multiple spaces
+            text = re.sub(r' +', ' ', text)
+
+            # Split into lines
+            lines = [line.strip() for line in text.split('\n') if line.strip()]
+
+            # Extract schedule lines
+            schedule_lines = [team_name, record, '']
+            schedule_started = False
+
+            for line in lines:
+                if 'Playoffs:' in line or 'Regular Season:' in line or 'Preseason:' in line:
+                    schedule_started = True
+                if schedule_started:
+                    if 'Byes:' in line or 'plaintextsports' in line.lower():
+                        break
+                    if len(line) > 2:
+                        schedule_lines.append(line)
+
+            return '\n'.join(schedule_lines)
 
         except Exception as e:
             print(f"Error fetching team schedule: {e}")
@@ -350,7 +388,7 @@ class NFLGames(commands.Cog):
 
     async def fetch_nfl_games(self) -> Dict:
         """Fetch and parse NFL games from plaintextsports.com"""
-        url = "https://plaintextsports.com/"
+        url = "https://plaintextsports.com/nfl/"
         
         try:
             async with self.session.get(url, timeout=10) as response:
