@@ -1,6 +1,3 @@
-from .nhl import NHLGames
+from .nhl import NHLGames, setup
 
-__red_end_user_data_statement__ = "This cog does not store any user data."
-
-async def setup(bot):
-    await bot.add_cog(NHLGames(bot))
+__red_end_user_data_statement__ = "This cog does not store any end user data."
