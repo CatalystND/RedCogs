@@ -2,6 +2,7 @@
     "author": [
         "Nick Daino"
     ],
+    "end_user_data_statement": "This cog does not store any end user data.",
     "description": "Fetches upcoming NBA game schedules from PlainTextSports and displays them in Discord embeds.",
     "install_msg": "Thanks for installing NBAGames! Use `[p]nba` to see upcoming NBA games. Make sure you have aiohttp and beautifulsoup4 installed: `pip install aiohttp beautifulsoup4`",
     "short": "Shows upcoming NBA games from PlainTextSports",

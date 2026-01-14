@@ -2,6 +2,7 @@
     "author": [
         "Nick Daino"
     ],
+    "end_user_data_statement": "This cog does not store any end user data.",
     "description": "Fetches current ski conditions from Bristol Mountain including lift status and trail conditions, and displays them in Discord embeds.",
     "install_msg": "Thanks for installing BristolConditions! Use `[p]bristol` to see current lift and trail conditions at Bristol Mountain. Make sure you have aiohttp and beautifulsoup4 installed: `pip install aiohttp beautifulsoup4`",
     "short": "Shows Bristol Mountain ski lift and trail conditions",
