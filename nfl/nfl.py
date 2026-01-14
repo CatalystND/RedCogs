@@ -2,7 +2,7 @@ import discord
 from redbot.core import commands, Config
 import aiohttp
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 from typing import List, Dict
 from difflib import get_close_matches
@@ -321,7 +321,7 @@ class NFLGames(commands.Cog):
             title=f"{team_name} - {year} Season",
             description=f"**{record}**" if record else None,
             color=0x013369,  # NFL blue
-            timestamp=datetime.utcnow()
+            timestamp=datetime.now(timezone.utc)
         )
 
         # Add playoffs if exists
@@ -537,7 +537,7 @@ class NFLGames(commands.Cog):
                     title=f"NFL Games - {day}",
                     description=f"**{data.get('round', 'Schedule')}**",
                     color=0x013369,  # NFL blue
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 )
                 
                 game_lines = []
@@ -574,7 +574,7 @@ class NFLGames(commands.Cog):
                         title=f"NFL Games - {day}",
                         description=f"**{data.get('round', 'Schedule')}**",
                         color=0x013369,  # NFL blue
-                        timestamp=datetime.utcnow()
+                        timestamp=datetime.now(timezone.utc)
                     )
                     
                     game_lines = []
@@ -610,13 +610,13 @@ class NFLGames(commands.Cog):
     @commands.bot_has_permissions(embed_links=True)
     @commands.group(invoke_without_command=True)
     async def nfl(self, ctx):
-        """Show NFL games
+        """Show NFL games for the current week
 
-        Usage:
-        [p]nfl - Show all upcoming games
-        [p]nfl today - Show only today's games
-        [p]nfl tomorrow - Show only tomorrow's games
-        [p]nfl <day> - Show games for a specific day (monday, tuesday, etc.)
+        Subcommands:
+          team <name> [year] - Show a team's full season schedule
+          today              - Show only today's games
+          tomorrow           - Show only tomorrow's games
+          <day>              - Show specific day (monday, tuesday, etc.)
         """
         # Only show all games if no subcommand was invoked
         if ctx.invoked_subcommand is None:
@@ -695,7 +695,7 @@ class NFLGames(commands.Cog):
                 title=f"NFL Games - {day}",
                 description=f"**{data.get('round', 'Schedule')}**",
                 color=0x013369,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
             
             game_lines = []
@@ -723,16 +723,15 @@ class NFLGames(commands.Cog):
     @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="team")
     async def nfl_team(self, ctx, team_name: str, year: int = None):
-        """Show a team's full season schedule
+        """Show a team's full season schedule (regular season, playoffs, preseason)
 
-        Usage:
-            [p]nfl team bills           - Current season
-            [p]nfl team buffalo 2022    - Specific year
-            [p]nfl team buffalobills    - Alternative format
+        Examples:
+            [p]nfl team bills           - Show current/upcoming season
+            [p]nfl team buffalo 2022    - Show 2022 season
+            [p]nfl team buffalobills    - Fuzzy match team names
 
-        Args:
-            team_name: Team name or nickname (fuzzy matched)
-            year: Optional season year (2021+), defaults to current season
+        The team name is fuzzy matched, so you can use abbreviations or partial names.
+        Years 2021-present are supported. Defaults to current season.
         """
         async with ctx.typing():
             # Determine year
