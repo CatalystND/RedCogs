@@ -12,7 +12,6 @@ class BristolConditions(commands.Cog):
         self.session = aiohttp.ClientSession()
 
     def cog_unload(self):
-        """Cleanup when cog is unloaded"""
         self.bot.loop.create_task(self.session.close())
 
     async def get_bristol_conditions(self) -> Optional[Tuple[List[Dict], List[Dict]]]:
@@ -23,21 +22,18 @@ class BristolConditions(commands.Cog):
                 if response.status != 200:
                     return None, None
                 html = await response.text()
-        except Exception as e:
-            print(f"Error fetching data: {e}")
+        except Exception:
             return None, None
 
         soup = BeautifulSoup(html, 'html.parser')
         tables = soup.find_all('table')
 
         if len(tables) < 2:
-            print("Could not find both lift and trail tables.")
             return None, None
 
-        # --- 1. EXTRACT LIFTS ---
+        # Extract lifts from first table
         lifts = []
-        lift_table = tables[0]
-        for row in lift_table.find_all('tr')[1:]:  # Skip header
+        for row in tables[0].find_all('tr')[1:]:
             cols = row.find_all('td')
             if len(cols) >= 2:
                 lifts.append({
@@ -45,11 +41,9 @@ class BristolConditions(commands.Cog):
                     "Status": cols[1].get_text(strip=True).upper()
                 })
 
-        # --- 2. EXTRACT TRAILS ---
+        # Extract trails from remaining tables
         trails = []
-        # Trail tables are usually the subsequent tables (Alpine Trails)
         for trail_table in tables[1:]:
-            # Try to find difficulty from a preceding header or an icon in the table
             current_difficulty = "Unknown"
             header = trail_table.find_previous(['h3', 'h4', 'strong'])
             if header:
@@ -61,18 +55,11 @@ class BristolConditions(commands.Cog):
 
             for row in trail_table.find_all('tr'):
                 cols = row.find_all('td')
-                # Look for rows with Trail Name, Status, Surface, Comments
                 if len(cols) >= 3:
                     name = cols[0].get_text(strip=True)
-                    # Filter out header rows
                     if name.lower() in ["trail", "lift", "status"]:
                         continue
 
-                    status = cols[1].get_text(strip=True).upper()
-                    surface = cols[2].get_text(strip=True) if len(cols) > 2 else "N/A"
-                    comments = cols[3].get_text(strip=True) if len(cols) > 3 else ""
-
-                    # Double check for difficulty icons in the first cell
                     img = cols[0].find('img')
                     if img and img.get('alt'):
                         current_difficulty = img.get('alt')
@@ -80,8 +67,8 @@ class BristolConditions(commands.Cog):
                     trails.append({
                         "Name": name,
                         "Difficulty": current_difficulty,
-                        "Status": status,
-                        "Conditions": f"{surface} {comments}".strip()
+                        "Status": cols[1].get_text(strip=True).upper(),
+                        "Conditions": f"{cols[2].get_text(strip=True)} {cols[3].get_text(strip=True) if len(cols) > 3 else ''}".strip()
                     })
 
         return lifts, trails
@@ -97,7 +84,6 @@ class BristolConditions(commands.Cog):
                 await ctx.send("Could not fetch Bristol Mountain conditions. Please try again later.")
                 return
 
-            # Create embed for lifts
             lift_embed = discord.Embed(
                 title="Bristol Mountain - Ski Lift Status",
                 color=0x0066CC,
@@ -118,14 +104,12 @@ class BristolConditions(commands.Cog):
 
             await ctx.send(embed=lift_embed)
 
-            # Create embeds for trails (may need multiple due to field limits)
             trail_embed = discord.Embed(
                 title="Bristol Mountain - Trail Conditions",
                 color=0x0066CC,
                 url="https://www.bristolmountain.com/conditions/"
             )
 
-            # Group trails by status
             open_trails = [t for t in trails if t['Status'] == 'OPEN']
             closed_trails = [t for t in trails if t['Status'] != 'OPEN']
 
@@ -156,5 +140,4 @@ class BristolConditions(commands.Cog):
             await ctx.send(embed=trail_embed)
 
 async def setup(bot):
-    """Required setup function for Red"""
     await bot.add_cog(BristolConditions(bot))

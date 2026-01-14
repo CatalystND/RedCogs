@@ -22,103 +22,56 @@ class NFLGames(commands.Cog):
         self.config.register_global(**default_global)
         
     def cog_unload(self):
-        """Cleanup when cog is unloaded"""
         self.bot.loop.create_task(self.session.close())
 
     def parse_game_box(self, text: str) -> Dict:
-        """Parse a game box text into structured data
-        
-        Format:
-        +--------------+
-        |  4:30 PM ET |
-        | 5 LAR 12-5 |
-        | 4 CAR 8-9 |
-        +--------- FOX +
-        """
+        """Parse ASCII game box: time, away team, home team, network"""
         lines = [line.strip() for line in text.split('\n') if line.strip()]
-        
-        # Remove the box drawing characters and plus signs
+
         cleaned_lines = []
         for line in lines:
-            # Remove leading/trailing + and |
             cleaned = line.strip('+ |')
             if cleaned and not all(c in '+-' for c in cleaned):
                 cleaned_lines.append(cleaned)
-        
+
         if len(cleaned_lines) < 3:
             return None
-        
-        # Clean up network by removing dashes
-        network = ''
-        if len(cleaned_lines) > 3:
-            network = cleaned_lines[3].strip().replace('-', '').strip()
-        
-        game_data = {
+
+        network = cleaned_lines[3].strip().replace('-', '').strip() if len(cleaned_lines) > 3 else ''
+
+        return {
             'time': cleaned_lines[0].strip(),
             'away': cleaned_lines[1].strip(),
             'home': cleaned_lines[2].strip(),
             'network': network
         }
-        
-        return game_data
 
     def format_team_info(self, team_str: str) -> str:
-        """Format team string to make team name stand out
-
-        Input: '5 LAR 12-5'
-        Output: '**LAR** *(12-5)*'
-        """
+        """Format '5 LAR 12-5' or 'LAR 12-5' → '**LAR** *(12-5)*'"""
         parts = team_str.split()
-
         if len(parts) == 3:
-            # Format: seed team record
-            seed, team, record = parts
+            _, team, record = parts
             return f"**{team}** *({record})*"
         elif len(parts) == 2:
-            # Format: team record (no seed)
             team, record = parts
             return f"**{team}** *({record})*"
-        else:
-            # Fallback
-            return team_str
+        return team_str
 
     def get_current_nfl_year(self) -> int:
-        """Determine current NFL season year
-
-        Switch to next year after June 1st.
-        Example: In May 2025 → 2024 season
-                 In June 2025 → 2025 season
-
-        Returns:
-            int: The current NFL season year
-        """
+        """NFL season year (switches to next year after June 1st)"""
         now = datetime.now()
-        if now.month >= 6:  # June or later
-            return now.year
-        else:  # Before June
-            return now.year - 1
+        return now.year if now.month >= 6 else now.year - 1
 
     async def fetch_team_list(self, year: int) -> List[Dict]:
-        """Fetch list of NFL teams for a given year, with 3-month caching
-
-        Args:
-            year: The NFL season year
-
-        Returns:
-            List of dicts with 'name' and 'slug' keys
-            Example: [{'name': 'Buffalo Bills', 'slug': 'buffalo-bills'}, ...]
-        """
-        # Check cache first
+        """Fetch NFL teams for a year (cached 90 days). Returns [{'name': ..., 'slug': ...}, ...]"""
         team_cache = await self.config.team_cache()
         year_str = str(year)
 
         if year_str in team_cache:
             cached_at = team_cache[year_str].get('cached_at', 0)
-            # Cache valid for 3 months (90 days)
             if (datetime.now().timestamp() - cached_at) < (90 * 24 * 60 * 60):
                 return team_cache[year_str]['teams']
 
-        # Fetch from website
         url = f"https://plaintextsports.com/nfl/{year}/teams/"
         async with self.session.get(url, timeout=10) as response:
             if response.status != 200:
@@ -126,75 +79,38 @@ class NFLGames(commands.Cog):
             html = await response.text()
 
         soup = BeautifulSoup(html, 'html.parser')
-
-        # Parse team links
-        # Format: <a href="/nfl/2025/teams/buffalo-bills">Buffalo Bills</a>
         teams = []
         for link in soup.find_all('a', href=re.compile(r'/nfl/\d+/teams/')):
-            href = link.get('href')
-            name = link.get_text(strip=True)
-            # Extract slug from href (/nfl/2025/teams/buffalo-bills → buffalo-bills)
-            slug = href.split('/')[-1]
-            teams.append({'name': name, 'slug': slug})
+            teams.append({
+                'name': link.get_text(strip=True),
+                'slug': link.get('href').split('/')[-1]
+            })
 
-        # Cache the results
-        team_cache[year_str] = {
-            'teams': teams,
-            'cached_at': datetime.now().timestamp()
-        }
+        team_cache[year_str] = {'teams': teams, 'cached_at': datetime.now().timestamp()}
         await self.config.team_cache.set(team_cache)
-
         return teams
 
     def find_team_slug(self, team_input: str, teams: List[Dict]) -> tuple:
-        """Find team slug using fuzzy matching
-
-        Args:
-            team_input: User's team input (e.g., "bills", "buffalo")
-            teams: List of team dicts from fetch_team_list()
-
-        Returns:
-            tuple: (slug, full_name) or (None, None) if not found
-        """
+        """Fuzzy match team input → (slug, full_name) or (None, None)"""
         team_input_lower = team_input.lower()
 
-        # Build searchable strings: full names, slugs, and name parts
         searchable = {}
         for team in teams:
-            name = team['name']
-            slug = team['slug']
-
-            # Add full name
+            name, slug = team['name'], team['slug']
             searchable[name.lower()] = (slug, name)
-            # Add slug
             searchable[slug.lower()] = (slug, name)
-            # Add individual words (Buffalo, Bills)
+            searchable[name.replace(' ', '').lower()] = (slug, name)
             for word in name.split():
                 searchable[word.lower()] = (slug, name)
-            # Add concatenated (buffalobills)
-            searchable[name.replace(' ', '').lower()] = (slug, name)
 
-        # Exact match first
         if team_input_lower in searchable:
             return searchable[team_input_lower]
 
-        # Fuzzy match
         matches = get_close_matches(team_input_lower, searchable.keys(), n=1, cutoff=0.6)
-        if matches:
-            return searchable[matches[0]]
-
-        return (None, None)
+        return searchable[matches[0]] if matches else (None, None)
 
     async def fetch_team_schedule(self, year: int, team_slug: str) -> str:
-        """Fetch team schedule from plaintextsports.com
-
-        Args:
-            year: NFL season year
-            team_slug: Team URL slug (e.g., 'buffalo-bills')
-
-        Returns:
-            str: Raw ASCII schedule text, or None on error
-        """
+        """Fetch raw ASCII schedule text for a team"""
         url = f"https://plaintextsports.com/nfl/{year}/teams/{team_slug}"
 
         try:
@@ -205,40 +121,25 @@ class NFLGames(commands.Cog):
 
             soup = BeautifulSoup(html, 'html.parser')
 
-            # Find the team name (in a div with class "font-bold text-center")
             team_name_div = soup.find('div', class_='font-bold text-center')
             if not team_name_div:
                 return None
-
             team_name = team_name_div.get_text(strip=True)
 
-            # Find the record (next div with class "text-center")
             record_div = team_name_div.find_next('div', class_='text-center')
             record = record_div.get_text(strip=True) if record_div else ''
 
-            # Convert HTML to text, preserving line structure
             body = soup.find('body')
             if not body:
                 return None
 
-            # Replace block-level closing tags with newlines
-            body_html = str(body)
-            body_html = re.sub(r'</div>', '\n', body_html)
+            body_html = re.sub(r'</div>', '\n', str(body))
             body_html = re.sub(r'</b>', '\n', body_html)
-
-            # Remove all HTML tags
-            text = re.sub(r'<[^>]+>', ' ', body_html)
-
-            # Clean up multiple spaces
-            text = re.sub(r' +', ' ', text)
-
-            # Split into lines
+            text = re.sub(r' +', ' ', re.sub(r'<[^>]+>', ' ', body_html))
             lines = [line.strip() for line in text.split('\n') if line.strip()]
 
-            # Extract schedule lines
             schedule_lines = [team_name, record, '']
             schedule_started = False
-
             for line in lines:
                 if 'Playoffs:' in line or 'Regular Season:' in line or 'Preseason:' in line:
                     schedule_started = True
@@ -250,118 +151,56 @@ class NFLGames(commands.Cog):
 
             return '\n'.join(schedule_lines)
 
-        except Exception as e:
-            print(f"Error fetching team schedule: {e}")
+        except Exception:
             return None
 
     def parse_team_schedule(self, raw_text: str) -> Dict:
-        """Parse team schedule from raw text
-
-        Args:
-            raw_text: ASCII schedule from team page
-
-        Returns:
-            Dict with keys: team_name, record, playoffs, regular_season, preseason
-            Each section is a list of formatted lines
-        """
+        """Parse raw schedule → {team_name, record, playoffs, regular_season, preseason}"""
         lines = raw_text.strip().split('\n')
-
         result = {
-            'team_name': '',
-            'record': '',
-            'playoffs': [],
-            'regular_season': [],
-            'preseason': []
+            'team_name': lines[0].strip() if lines else '',
+            'record': lines[1].strip() if len(lines) > 1 else '',
+            'playoffs': [], 'regular_season': [], 'preseason': []
         }
 
-        # First line is team name
-        if lines:
-            result['team_name'] = lines[0].strip()
-
-        # Second line is record
-        if len(lines) > 1:
-            result['record'] = lines[1].strip()
-
-        # Parse sections
         current_section = None
         for line in lines[2:]:
             line = line.strip()
             if not line:
                 continue
-
-            # Detect section headers
             if 'Playoffs:' in line:
                 current_section = 'playoffs'
-                result['playoffs'].append(line)
             elif 'Regular Season:' in line:
                 current_section = 'regular_season'
-                result['regular_season'].append(line)
             elif 'Preseason:' in line:
                 current_section = 'preseason'
-                result['preseason'].append(line)
-            elif current_section:
+            if current_section:
                 result[current_section].append(line)
 
         return result
 
     def format_team_schedule_embed(self, schedule_data: Dict, year: int) -> discord.Embed:
-        """Format team schedule as Discord embed
-
-        Args:
-            schedule_data: Parsed schedule from parse_team_schedule()
-            year: NFL season year
-
-        Returns:
-            discord.Embed: Formatted embed
-        """
-        team_name = schedule_data.get('team_name', 'Unknown Team')
-        record = schedule_data.get('record', '')
-
+        """Format parsed schedule as Discord embed"""
         embed = discord.Embed(
-            title=f"{team_name} - {year} Season",
-            description=f"**{record}**" if record else None,
-            color=0x013369,  # NFL blue
+            title=f"{schedule_data.get('team_name', 'Unknown Team')} - {year} Season",
+            description=f"**{schedule_data.get('record', '')}**" if schedule_data.get('record') else None,
+            color=0x013369,
             timestamp=datetime.now(timezone.utc)
         )
 
-        # Add playoffs if exists
-        if schedule_data.get('playoffs'):
-            playoff_text = '\n'.join(schedule_data['playoffs'])
-            # Discord field limit is 1024 chars
-            if len(playoff_text) > 1024:
-                playoff_text = playoff_text[:1021] + "..."
-            embed.add_field(
-                name="Playoffs",
-                value=f"```\n{playoff_text}\n```",
-                inline=False
-            )
-
-        # Add regular season
-        if schedule_data.get('regular_season'):
-            season_text = '\n'.join(schedule_data['regular_season'])
-            # Split into multiple fields if too long
-            chunks = self._split_text_to_chunks(season_text, 1020)
-            for i, chunk in enumerate(chunks):
-                name = "Regular Season" if i == 0 else "Regular Season (cont.)"
-                embed.add_field(
-                    name=name,
-                    value=f"```\n{chunk}\n```",
-                    inline=False
-                )
-
-        # Add preseason
-        if schedule_data.get('preseason'):
-            preseason_text = '\n'.join(schedule_data['preseason'])
-            if len(preseason_text) > 1024:
-                preseason_text = preseason_text[:1021] + "..."
-            embed.add_field(
-                name="Preseason",
-                value=f"```\n{preseason_text}\n```",
-                inline=False
-            )
+        for section, name in [('playoffs', 'Playoffs'), ('regular_season', 'Regular Season'), ('preseason', 'Preseason')]:
+            if not schedule_data.get(section):
+                continue
+            text = '\n'.join(schedule_data[section])
+            if section == 'regular_season':
+                for i, chunk in enumerate(self._split_text_to_chunks(text, 1020)):
+                    embed.add_field(name=name if i == 0 else f"{name} (cont.)", value=f"```\n{chunk}\n```", inline=False)
+            else:
+                if len(text) > 1024:
+                    text = text[:1021] + "..."
+                embed.add_field(name=name, value=f"```\n{text}\n```", inline=False)
 
         embed.set_footer(text="Data from plaintextsports.com")
-
         return embed
 
     def _split_text_to_chunks(self, text: str, max_length: int) -> List[str]:
@@ -386,226 +225,129 @@ class NFLGames(commands.Cog):
 
         return chunks
 
-    async def fetch_nfl_games(self) -> Dict:
-        """Fetch and parse NFL games from plaintextsports.com"""
+    async def fetch_nfl_games(self):
+        """Fetch and parse NFL games. Returns dict on success, error string on failure."""
+        import logging
+        log = logging.getLogger("red.nfl")
         url = "https://plaintextsports.com/nfl/"
-        
+
         try:
             async with self.session.get(url, timeout=10) as response:
                 if response.status != 200:
-                    print(f"HTTP Error: Status code {response.status}")
-                    return None
+                    return "Website unavailable (HTTP error). Try again shortly."
                 html = await response.text()
-                print(f"Successfully fetched HTML, length: {len(html)}")
-                
+
             soup = BeautifulSoup(html, 'html.parser')
-            
-            # Find the NFL section by looking for "National Football League" text
+
             nfl_found = False
             current_section = None
-            
             for element in soup.find_all(string=True):
                 if 'National Football League' in element:
                     nfl_found = True
                     current_section = element.parent
                     break
-            
+
             if not nfl_found:
-                print("Could not find NFL section")
-                return None
-            
-            print("Found NFL section")
-            
-            # Get round/week info
+                return "NFL section not found - website may have changed."
+
             round_info = "NFL Games"
             if current_section:
                 next_text = current_section.find_next(string=True)
-                if next_text and ('Wild Card' in next_text or 'Week' in next_text):
+                if next_text and ('Wild Card' in next_text or 'Week' in next_text or 'Divisional' in next_text or 'Conference' in next_text or 'Super Bowl' in next_text):
                     round_info = next_text.strip()
-            
+
             games_by_day = {}
             current_day = "Today"
-            
-            # Find all links (game boxes are wrapped in <a> tags)
-            # We need to process the entire NFL section
             processing_nfl = False
-            
+            other_leagues = ['National Basketball', 'National Hockey', 'Major League Baseball', 'Major League Soccer', 'National Association']
+
             for element in soup.find_all(['a', 'h1', 'h2', 'h3', 'p', 'div']):
                 text = element.get_text(strip=True)
 
-                # Check if we've entered NFL section
                 if 'National Football League' in text:
                     processing_nfl = True
                     continue
 
-                # Check if we've left NFL section (entered another sport/league)
                 if processing_nfl:
-                    # Look for other major sports leagues
-                    other_leagues = [
-                        'National Basketball',   # NBA
-                        'National Hockey',       # NHL
-                        'Major League Baseball', # MLB
-                        'Major League Soccer',   # MLS
-                        'National Association',  # College sports
-                    ]
-
-                    # Check if we hit another league
                     if any(league in text for league in other_leagues):
-                        print(f"Found end of NFL section: {text}")
                         break
-
-                    # Safety limit: stop if we've found an unreasonable number of games
-                    total_parsed = sum(len(games) for games in games_by_day.values())
-                    if total_parsed >= 20:
-                        print(f"Safety limit reached: {total_parsed} games parsed")
+                    if sum(len(games) for games in games_by_day.values()) >= 20:
                         break
 
                 if not processing_nfl:
                     continue
-                
-                # Check for day headers
+
                 if re.match(r'^(Today|Tomorrow|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)', text):
-                    # Extract just the day part
                     day_match = text.split(',')[0]
                     if day_match in ['Today', 'Tomorrow', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']:
                         current_day = day_match
-                        print(f"Found day header: {current_day}")
                     continue
-                
-                # Parse game boxes (they are in <a> tags with the box drawing)
+
                 if element.name == 'a' and '+-' in element.get_text():
-                    game_text = element.get_text()
-                    game_data = self.parse_game_box(game_text)
-                    
+                    game_data = self.parse_game_box(element.get_text())
                     if game_data:
                         if current_day not in games_by_day:
                             games_by_day[current_day] = []
                         games_by_day[current_day].append(game_data)
-                        print(f"Parsed game: {game_data}")
-            
-            total_games = sum(len(g) for g in games_by_day.values())
-            print(f"Total games found: {total_games}")
-            print(f"Games by day: {list(games_by_day.keys())}")
-            
+
             if not games_by_day:
-                print("No games parsed")
-                return None
-            
-            result = {
-                'round': round_info,
-                'games': games_by_day
-            }
-            print(f"Returning result with {len(games_by_day)} days")
-            return result
-            
-        except aiohttp.ClientError as e:
-            print(f"Network error fetching NFL games: {e}")
-            return None
+                return "No NFL games found. The season may be over or no games scheduled."
+
+            return {'round': round_info, 'games': games_by_day}
+
         except Exception as e:
-            print(f"Error fetching NFL games: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
+            log.warning(f"NFL parse error: {type(e).__name__}: {e}")
+            return "Error processing game data. Try again later."
+
+    def _build_day_embed(self, day: str, games: List[Dict], round_info: str) -> discord.Embed:
+        """Build embed for a day's games"""
+        embed = discord.Embed(
+            title=f"NFL Games - {day}",
+            description=f"**{round_info}**",
+            color=0x013369,
+            timestamp=datetime.now(timezone.utc)
+        )
+
+        game_lines = []
+        for game in games:
+            away = self.format_team_info(game['away'])
+            home = self.format_team_info(game['home'])
+            line = f"**{game['time']}**\n{away} @ {home}"
+            if game['network']:
+                line += f" - {game['network']}"
+            game_lines.append(line)
+
+        if game_lines:
+            field_value = "\n\n".join(game_lines)
+            if len(field_value) > 1024:
+                field_value = field_value[:1021] + "..."
+            embed.add_field(name="Games", value=field_value, inline=False)
+
+        embed.set_footer(text="Data from plaintextsports.com")
+        return embed
 
     async def show_nfl_games(self, ctx):
         """Show upcoming NFL games in a formatted embed"""
         async with ctx.typing():
             data = await self.fetch_nfl_games()
-            
-            print(f"show_nfl_games - data received: {data is not None}")
-            if data:
-                print(f"show_nfl_games - games dict: {data.get('games', {})}")
-            
-            if not data or not data.get('games'):
-                await ctx.send("Could not fetch NFL game information. Please try again later.")
+
+            if isinstance(data, str):
+                await ctx.send(data)
                 return
-            
-            # Add games by day - "Today" should be first
+            if not data or not data.get('games'):
+                await ctx.send("Could not fetch NFL game information.")
+                return
+
             days_order = ['Today', 'Tomorrow', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-            
-            embeds = []
-            
-            for day in days_order:
-                if day not in data['games']:
-                    continue
-                    
-                games = data['games'][day]
-                if not games:
-                    continue
-                    
-                embed = discord.Embed(
-                    title=f"NFL Games - {day}",
-                    description=f"**{data.get('round', 'Schedule')}**",
-                    color=0x013369,  # NFL blue
-                    timestamp=datetime.now(timezone.utc)
-                )
-                
-                game_lines = []
-                for game in games:
-                    time = game['time']
-                    away = self.format_team_info(game['away'])
-                    home = self.format_team_info(game['home'])
-                    network = game['network']
-                    
-                    if network:
-                        game_lines.append(f"**{time}**\n{away} @ {home} - {network}")
-                    else:
-                        game_lines.append(f"**{time}**\n{away} @ {home}")
-                
-                if game_lines:
-                    field_value = "\n\n".join(game_lines)
-                    # Discord embed field value limit is 1024 characters
-                    if len(field_value) > 1024:
-                        field_value = field_value[:1021] + "..."
-                    
-                    embed.add_field(
-                        name="Games",
-                        value=field_value,
-                        inline=False
-                    )
-                
-                embed.set_footer(text="Data from plaintextsports.com")
-                embeds.append(embed)
-            
-            # Add any remaining days not in the order list
-            for day, games in data['games'].items():
-                if day not in days_order and games:
-                    embed = discord.Embed(
-                        title=f"NFL Games - {day}",
-                        description=f"**{data.get('round', 'Schedule')}**",
-                        color=0x013369,  # NFL blue
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    
-                    game_lines = []
-                    for game in games:
-                        time = game['time']
-                        away = self.format_team_info(game['away'])
-                        home = self.format_team_info(game['home'])
-                        network = game['network']
-                        
-                        if network:
-                            game_lines.append(f"**{time}**\n{away} @ {home} - {network}")
-                        else:
-                            game_lines.append(f"**{time}**\n{away} @ {home}")
-                    
-                    if game_lines:
-                        field_value = "\n\n".join(game_lines)
-                        if len(field_value) > 1024:
-                            field_value = field_value[:1021] + "..."
-                        
-                        embed.add_field(
-                            name="Games",
-                            value=field_value,
-                            inline=False
-                        )
-                    
-                    embed.set_footer(text="Data from plaintextsports.com")
-                    embeds.append(embed)
-            
-            # Send all embeds
-            for embed in embeds:
-                await ctx.send(embed=embed)
+            round_info = data.get('round', 'Schedule')
+
+            # Process ordered days first, then any remaining
+            all_days = [d for d in days_order if d in data['games']] + [d for d in data['games'] if d not in days_order]
+
+            for day in all_days:
+                games = data['games'].get(day, [])
+                if games:
+                    await ctx.send(embed=self._build_day_embed(day, games, round_info))
 
     @commands.bot_has_permissions(embed_links=True)
     @commands.group(invoke_without_command=True)
@@ -680,65 +422,35 @@ class NFLGames(commands.Cog):
         """Show NFL games for a specific day"""
         async with ctx.typing():
             data = await self.fetch_nfl_games()
-            
+
+            if isinstance(data, str):
+                await ctx.send(data)
+                return
             if not data or not data.get('games'):
                 await ctx.send("Could not fetch NFL game information.")
                 return
-            
+
             day_games = data['games'].get(day, [])
-            
             if not day_games:
                 await ctx.send(f"No NFL games scheduled for {day}.")
                 return
-            
-            embed = discord.Embed(
-                title=f"NFL Games - {day}",
-                description=f"**{data.get('round', 'Schedule')}**",
-                color=0x013369,
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            game_lines = []
-            for game in day_games:
-                time = game['time']
-                away = self.format_team_info(game['away'])
-                home = self.format_team_info(game['home'])
-                network = game['network']
-                
-                if network:
-                    game_lines.append(f"**{time}**\n{away} @ {home} - {network}")
-                else:
-                    game_lines.append(f"**{time}**\n{away} @ {home}")
-            
-            embed.add_field(
-                name="Games",
-                value="\n\n".join(game_lines),
-                inline=False
-            )
-            
-            embed.set_footer(text="Data from plaintextsports.com")
-            
-            await ctx.send(embed=embed)
+
+            await ctx.send(embed=self._build_day_embed(day, day_games, data.get('round', 'Schedule')))
 
     @commands.bot_has_permissions(embed_links=True)
     @nfl.command(name="team")
     async def nfl_team(self, ctx, team_name: str, year: int = None):
-        """Show a team's full season schedule (regular season, playoffs, preseason)
+        """Show a team's full season schedule
 
         Examples:
-            [p]nfl team bills           - Show current/upcoming season
-            [p]nfl team buffalo 2022    - Show 2022 season
-            [p]nfl team buffalobills    - Fuzzy match team names
-
-        The team name is fuzzy matched, so you can use abbreviations or partial names.
-        Years 2021-present are supported. Defaults to current season.
+            [p]nfl team bills           - Current season
+            [p]nfl team buffalo 2022    - 2022 season
+            [p]nfl team buffalobills    - Fuzzy matched
         """
         async with ctx.typing():
-            # Determine year
             if year is None:
                 year = self.get_current_nfl_year()
 
-            # Validate year
             current_year = self.get_current_nfl_year()
             if year < 2021:
                 await ctx.send(f"Data only available for 2021-{current_year}.")
@@ -747,33 +459,22 @@ class NFLGames(commands.Cog):
                 await ctx.send(f"Data not yet available for {year}.")
                 return
 
-            # Fetch team list
             teams = await self.fetch_team_list(year)
             if not teams:
                 await ctx.send(f"Could not fetch team list for {year}.")
                 return
 
-            # Find team
             team_slug, full_name = self.find_team_slug(team_name, teams)
             if not team_slug:
-                # Build helpful error message
-                team_names = [t['name'] for t in teams[:5]]
-                await ctx.send(
-                    f"Team '{team_name}' not found. Try: {', '.join(team_names)}, etc."
-                )
+                await ctx.send(f"Team '{team_name}' not found. Try: {', '.join(t['name'] for t in teams[:5])}, etc.")
                 return
 
-            # Fetch schedule
             raw_schedule = await self.fetch_team_schedule(year, team_slug)
             if not raw_schedule:
                 await ctx.send(f"Could not fetch schedule for {full_name} ({year}).")
                 return
 
-            # Parse and format
-            schedule_data = self.parse_team_schedule(raw_schedule)
-            embed = self.format_team_schedule_embed(schedule_data, year)
-
-            await ctx.send(embed=embed)
+            await ctx.send(embed=self.format_team_schedule_embed(self.parse_team_schedule(raw_schedule), year))
 
     @commands.command()
     async def nfltest(self, ctx):
@@ -795,5 +496,4 @@ class NFLGames(commands.Cog):
                 await ctx.send(f"Connection failed: {e}")
 
 async def setup(bot):
-    """Required setup function for Red"""
     await bot.add_cog(NFLGames(bot))
