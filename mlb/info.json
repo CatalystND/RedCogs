@@ -1,0 +1,24 @@
+{
+    "author": [
+        "Nick Daino"
+    ],
+    "end_user_data_statement": "This cog does not store any end user data.",
+    "description": "Fetches upcoming MLB game schedules from PlainTextSports and displays them in Discord embeds.",
+    "install_msg": "Thanks for installing MLBGames! Use `[p]mlb` to see upcoming MLB games. Make sure you have aiohttp and beautifulsoup4 installed: `pip install aiohttp beautifulsoup4`",
+    "short": "Shows upcoming MLB games from PlainTextSports",
+    "tags": [
+        "mlb",
+        "sports",
+        "baseball",
+        "games",
+        "schedule"
+    ],
+    "requirements": [
+        "aiohttp",
+        "beautifulsoup4"
+    ],
+    "min_bot_version": "3.4.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
