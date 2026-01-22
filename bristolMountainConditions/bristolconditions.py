@@ -14,6 +14,17 @@ class BristolConditions(commands.Cog):
     def cog_unload(self):
         self.bot.loop.create_task(self.session.close())
 
+    async def get_bristol_weather(self) -> str:
+        """Fetch current weather for Bristol, NY from wttr.in"""
+        url = "https://wttr.in/Bristol,NY?format=4"
+        try:
+            async with self.session.get(url, timeout=10) as response:
+                if response.status != 200:
+                    return None
+                return (await response.text()).strip()
+        except Exception:
+            return None
+
     async def get_bristol_conditions(self) -> Optional[Tuple[List[Dict], List[Dict]]]:
         """Fetch and parse Bristol Mountain conditions"""
         url = "https://www.bristolmountain.com/conditions/"
@@ -79,6 +90,7 @@ class BristolConditions(commands.Cog):
         """Show Bristol Mountain lift and trail conditions"""
         async with ctx.typing():
             lifts, trails = await self.get_bristol_conditions()
+            weather = await self.get_bristol_weather()
 
             if not lifts or not trails:
                 await ctx.send("Could not fetch Bristol Mountain conditions. Please try again later.")
@@ -87,7 +99,8 @@ class BristolConditions(commands.Cog):
             lift_embed = discord.Embed(
                 title="Bristol Mountain - Ski Lift Status",
                 color=0x0066CC,
-                url="https://www.bristolmountain.com/conditions/"
+                url="https://www.bristolmountain.com/conditions/",
+                description=weather if weather else None
             )
 
             lift_lines = []

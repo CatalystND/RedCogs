@@ -124,6 +124,7 @@ class TestBristolCommandOutput:
 
         try:
             lifts, trails = await cog.get_bristol_conditions()
+            weather = await cog.get_bristol_weather()
 
             if not lifts and not trails:
                 print("\n[SKIP] Could not fetch Bristol conditions (network/SSL issue)")
@@ -135,7 +136,8 @@ class TestBristolCommandOutput:
             lift_embed = discord.Embed(
                 title="Bristol Mountain - Ski Lift Status",
                 color=0x0066CC,
-                url="https://www.bristolmountain.com/conditions/"
+                url="https://www.bristolmountain.com/conditions/",
+                description=weather if weather else None
             )
             lift_lines = []
             for lift in lifts:

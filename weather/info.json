@@ -1,0 +1,22 @@
+{
+    "author": [
+        "Nick Daino"
+    ],
+    "end_user_data_statement": "This cog does not store any end user data.",
+    "description": "Fetches weather forecasts from wttr.in and displays them in Discord. Supports city names, zip codes, and defaults to NY if a location isn't found.",
+    "install_msg": "Thanks for installing Weather! Use `[p]weather <location>` to get a weather forecast. Examples: `[p]weather Rochester` or `[p]weather 14618`",
+    "short": "Weather forecasts from wttr.in",
+    "tags": [
+        "weather",
+        "forecast",
+        "wttr.in",
+        "temperature"
+    ],
+    "requirements": [
+        "aiohttp"
+    ],
+    "min_bot_version": "3.4.0",
+    "hidden": false,
+    "disabled": false,
+    "type": "COG"
+}
